@@ -2,10 +2,12 @@
 #include <stdlib.h>
 #include <stdbool.h>
 #include <string.h>
+#include <unistd.h>
+#include <sys/types.h>
+#include <sys/wait.h>
 
-#define	READLINE_BUFFER_INIT_SIZE	 	1000
-#define READLINE_BUFFER_GROWTH_FACTOR	0.5f
-#define TOKENS_BUFFER_INIT_SIZE			16
+#define	READLINE_BUFFER_INIT_SIZE	 2
+#define TOKENS_BUFFER_INIT_SIZE		16
 
 static bool run = true;
 static size_t alloc_len;
@@ -27,7 +29,7 @@ void buffer_read_line(char *buffer, size_t *len) {
 		if((c == '\n') || (c == EOF)) break;
 
 		if((*len + 2 == alloc_len)) {
-			alloc_len += alloc_len * READLINE_BUFFER_GROWTH_FACTOR;
+			alloc_len += alloc_len;
 			if((tmp = realloc(buffer, alloc_len)) == NULL) return;
 			buffer = tmp;
 		}
@@ -38,13 +40,12 @@ void buffer_read_line(char *buffer, size_t *len) {
 	if (c == EOF) run = false;
 }
 
-void buffer_split(char *b, size_t *len, char ***tokens, size_t *tokens_count) {
+void buffer_split(char *b, char ***tokens, size_t *tokens_count) {
 	if(b == NULL) return;
 
+	char **tmp;
 	size_t token_alloc;
-	char *start, **tmp;
 
-	start = b;
 	*tokens_count = 0;
 
 	if(*tokens != NULL) return; 
@@ -57,23 +58,42 @@ void buffer_split(char *b, size_t *len, char ***tokens, size_t *tokens_count) {
 	while((*tokens)[*tokens_count] != NULL) {
 		(*tokens)[++(*tokens_count)] = strtok(NULL, " ");
 		if (*tokens_count == token_alloc) {
-			token_alloc += TOKENS_BUFFER_INIT_SIZE;
+			token_alloc += token_alloc;
 			tmp = realloc(*tokens, sizeof(char *) * token_alloc);
 			if(tmp == NULL) return;
 			*tokens = tmp;
 		}
 	}
+}
 
-	b = start;
+void msh_execute(char **argv) {
+	int status;
+	pid_t pid;
+
+	pid = fork();
+	if (pid == 0) {
+		/* child process */
+		if(execvp(argv[0], argv) < 0) perror("msh");
+
+		exit(EXIT_FAILURE);
+	}
+	else if (pid < 0) {
+		perror("msh: could not fork");
+	}
+	else {
+		do {
+			waitpid(pid, &status, WUNTRACED);
+		} while (!WIFEXITED(status) && !WIFSIGNALED(status));
+	}
 }
 
 void msh_loop(void) {
-	char *buffer;
-	size_t len;
+	char *buffer, **tokens;
+	size_t len, tokens_count;
 
-	len = 0;
 	buffer = malloc(alloc_len = READLINE_BUFFER_INIT_SIZE);
 
+	len = 0;
 	while (run) {
 		buffer_clear(buffer, &len);
 
@@ -81,23 +101,21 @@ void msh_loop(void) {
 
 		buffer_read_line(buffer, &len);
 
-		/* printf("%s\n", buffer); */
+		tokens = NULL;
+		tokens_count = 0;
+		buffer_split(buffer, &tokens, &tokens_count);
 
-		char **tokens = NULL;
-		size_t tokens_count = 0;
-		buffer_split(buffer, &len, &tokens, &tokens_count);
-
-		printf("tokens_count: %ld\n", tokens_count);
-		for(size_t t = 0; t < tokens_count; t++)
-			printf("%s\n", tokens[t]);
+		msh_execute(tokens);
 	}
+
+	for (size_t token = 0; token < tokens_count; token++)
+		free(tokens[token]);
+
+	free(tokens);
+	free(buffer);
 }
 
 int main (void) {
-	/* load config files */
-
 	msh_loop();
-
-	/* cleanup */
 	return 0;
 }
