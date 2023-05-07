@@ -6,64 +6,68 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 
-#define	READLINE_BUFFER_INIT_SIZE	 2
-#define TOKENS_BUFFER_INIT_SIZE		16
+#define	READLINE_BUFFER_INIT_SIZE	128
+#define TOKENS_BUFFER_INIT_SIZE		8
+#define TOKENS_DELIM				" |"
 
 static bool run = true;
-static size_t alloc_len;
+static size_t buffer_alloc;
+static size_t tokens_alloc;
 
-void buffer_clear(char *buf, size_t *len) {
-	for (size_t i = 0; i < *len; i++)
+void buffer_clear(char *buf) {
+	size_t len = strlen(buf);
+	for (size_t i = 0; i < len; i++)
 		buf[i] = '\0';
-
-	*len = 0;
 }
 
-void buffer_read_line(char *buffer, size_t *len) {
+char *buffer_read_line(char *s) {
 	int c;
-	char *tmp;
+	char *aux;
+	size_t used_size;
 
-	/* read line into buffer */
-	while(1) {
-		c = fgetc(stdin);
-		if((c == '\n') || (c == EOF)) break;
+	used_size = 0;
+	while (1) {
+		c = getchar();
+		if((c == '\n') || (c == EOF))
+			goto end;
 
-		if((*len + 2 == alloc_len)) {
-			alloc_len += alloc_len;
-			if((tmp = realloc(buffer, alloc_len)) == NULL) return;
-			buffer = tmp;
+		if(used_size == (buffer_alloc - 1)) {
+			if(!(aux = realloc(s, buffer_alloc += buffer_alloc))) {
+				perror("msh");
+				free(s);
+				return NULL;
+			}
+			s = aux;
 		}
-
-		buffer[(*len)++] = c;
+		s[used_size++] = c;
 	}
-	buffer[*len] = '\0';
+end:
+	s[used_size] = '\0';
 	if (c == EOF) run = false;
+	return s;
 }
 
-void buffer_split(char *b, char ***tokens, size_t *tokens_count) {
-	if(b == NULL) return;
+char **buffer_split(char *b, char **t) {
+	char *p, **aux;
+	size_t tokens_count;
 
-	char **tmp;
-	size_t token_alloc;
-
-	*tokens_count = 0;
-
-	if(*tokens != NULL) return; 
-
-	*tokens = malloc((sizeof(char *) * TOKENS_BUFFER_INIT_SIZE));
-	token_alloc = TOKENS_BUFFER_INIT_SIZE;
-	if (*tokens == NULL) return;
-
-	(*tokens)[*tokens_count] = strtok(b, " ");
-	while((*tokens)[*tokens_count] != NULL) {
-		(*tokens)[++(*tokens_count)] = strtok(NULL, " ");
-		if (*tokens_count == token_alloc) {
-			token_alloc += token_alloc;
-			tmp = realloc(*tokens, sizeof(char *) * token_alloc);
-			if(tmp == NULL) return;
-			*tokens = tmp;
+	tokens_count = 0;
+	for(p = b; (p = strtok(p, TOKENS_DELIM)); p = NULL) {
+		if((tokens_count + 1) == tokens_alloc) {
+			tokens_alloc += tokens_alloc;
+			if(!(aux = realloc(t, sizeof(char*) * tokens_alloc))) {
+				perror("msh");
+				for(size_t i = 0; i < tokens_count; i++)
+					free(t[i]);
+				free(t);
+				return NULL;
+			}
+			t = aux;
 		}
+		t[tokens_count++] = p;
 	}
+	t[tokens_count] = NULL;
+	return t;
 }
 
 void msh_execute(char **argv) {
@@ -73,7 +77,8 @@ void msh_execute(char **argv) {
 	pid = fork();
 	if (pid == 0) {
 		/* child process */
-		if(execvp(argv[0], argv) < 0) perror("msh");
+		if(execvp(argv[0], argv) < 0)
+			perror(argv[0]);
 
 		exit(EXIT_FAILURE);
 	}
@@ -89,28 +94,29 @@ void msh_execute(char **argv) {
 
 void msh_loop(void) {
 	char *buffer, **tokens;
-	size_t len, tokens_count;
 
-	buffer = malloc(alloc_len = READLINE_BUFFER_INIT_SIZE);
+	buffer_alloc = READLINE_BUFFER_INIT_SIZE;
+	if(!(buffer = calloc(buffer_alloc, sizeof(char))))
+		exit(EXIT_FAILURE);
 
-	len = 0;
-	while (run) {
-		buffer_clear(buffer, &len);
-
-		printf("> ");
-
-		buffer_read_line(buffer, &len);
-
-		tokens = NULL;
-		tokens_count = 0;
-		buffer_split(buffer, &tokens, &tokens_count);
-
-		msh_execute(tokens);
+	tokens_alloc = TOKENS_BUFFER_INIT_SIZE;
+	if(!(tokens = malloc(sizeof(char*) * tokens_alloc))) {
+		free(buffer);
+		exit(EXIT_FAILURE);
 	}
 
-	for (size_t token = 0; token < tokens_count; token++)
-		free(tokens[token]);
+	while (run) {
+		/* make cusor blinking vertical bar */
+		printf("\033[5 q$ ");
+		buffer = buffer_read_line(buffer);
+		tokens = buffer_split(buffer, tokens);
 
+		/* skip execute if buffer is empty */
+		if(strlen(buffer) > 0)
+			msh_execute(tokens);
+
+		buffer_clear(buffer);
+	}
 	free(tokens);
 	free(buffer);
 }
