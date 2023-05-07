@@ -8,6 +8,7 @@
 
 #define	READLINE_BUFFER_INIT_SIZE	128
 #define TOKENS_BUFFER_INIT_SIZE		8
+#define TOKENS_DELIM				" |"
 
 static bool run = true;
 static size_t buffer_alloc;
@@ -46,12 +47,12 @@ end:
 	return s;
 }
 
-char **buffer_split_delim(char *b, char **t) {
+char **buffer_split(char *b, char **t) {
 	char *p, **aux;
 	size_t tokens_count;
 
 	tokens_count = 0;
-	for(p = b; (p = strtok(p, " ")); p = NULL) {
+	for(p = b; (p = strtok(p, TOKENS_DELIM)); p = NULL) {
 		if((tokens_count + 1) == tokens_alloc) {
 			tokens_alloc += tokens_alloc;
 			if(!(aux = realloc(t, sizeof(char*) * tokens_alloc))) {
@@ -100,7 +101,7 @@ void msh_loop(void) {
 
 	tokens_alloc = TOKENS_BUFFER_INIT_SIZE;
 	if(!(tokens = malloc(sizeof(char*) * tokens_alloc))) {
-		free(buffer)
+		free(buffer);
 		exit(EXIT_FAILURE);
 	}
 
@@ -108,7 +109,7 @@ void msh_loop(void) {
 		/* make cusor blinking vertical bar */
 		printf("\033[5 q$ ");
 		buffer = buffer_read_line(buffer);
-		tokens = buffer_split_delim(buffer, tokens);
+		tokens = buffer_split(buffer, tokens);
 
 		/* skip execute if buffer is empty */
 		if(strlen(buffer) > 0)
