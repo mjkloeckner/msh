@@ -29,7 +29,7 @@ char *buffer_read_line(char *s) {
 	while (1) {
 		c = getchar();
 		if((c == '\n') || (c == EOF))
-			goto end;
+			break;
 
 		if(used_size == (buffer_alloc - 1)) {
 			if(!(aux = realloc(s, buffer_alloc += buffer_alloc))) {
@@ -41,7 +41,7 @@ char *buffer_read_line(char *s) {
 		}
 		s[used_size++] = c;
 	}
-end:
+
 	s[used_size] = '\0';
 	if (c == EOF) run = false;
 	return s;
