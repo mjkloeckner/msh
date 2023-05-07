@@ -6,11 +6,12 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 
-#define	READLINE_BUFFER_INIT_SIZE	2
-#define TOKENS_BUFFER_INIT_SIZE		16
+#define	READLINE_BUFFER_INIT_SIZE	128
+#define TOKENS_BUFFER_INIT_SIZE		8
 
 static bool run = true;
-static size_t alloc_len;
+static size_t buffer_alloc;
+static size_t tokens_alloc;
 
 void buffer_clear(char *buf) {
 	size_t len = strlen(buf);
@@ -18,21 +19,19 @@ void buffer_clear(char *buf) {
 		buf[i] = '\0';
 }
 
-char *buffer_read_line(void) {
+char *buffer_read_line(char *s) {
 	int c;
-	char *s, *aux;
+	char *aux;
 	size_t used_size;
-
-	if(!(s = malloc(alloc_len = READLINE_BUFFER_INIT_SIZE)))
-		return NULL;
 
 	used_size = 0;
 	while (1) {
 		c = getchar();
-		if((c == '\n') || (c == EOF)) break;
+		if((c == '\n') || (c == EOF))
+			goto end;
 
-		if(used_size == (alloc_len - 1)) {
-			if(!(aux = realloc(s, alloc_len += alloc_len))) {
+		if(used_size == (buffer_alloc - 1)) {
+			if(!(aux = realloc(s, buffer_alloc += buffer_alloc))) {
 				perror("msh");
 				free(s);
 				return NULL;
@@ -41,37 +40,33 @@ char *buffer_read_line(void) {
 		}
 		s[used_size++] = c;
 	}
+end:
 	s[used_size] = '\0';
 	if (c == EOF) run = false;
 	return s;
 }
 
-char **buffer_split_delim(char *b, size_t *t) {
-	char *p, **tokens, **aux;
-	size_t tokens_count, tokens_alloc;
-
-	tokens_alloc = TOKENS_BUFFER_INIT_SIZE;
-	tokens = malloc(sizeof(char*) * TOKENS_BUFFER_INIT_SIZE);
+char **buffer_split_delim(char *b, char **t) {
+	char *p, **aux;
+	size_t tokens_count;
 
 	tokens_count = 0;
 	for(p = b; (p = strtok(p, " ")); p = NULL) {
 		if((tokens_count + 1) == tokens_alloc) {
-			if(!(aux = realloc(tokens, tokens_alloc += tokens_alloc))) {
+			tokens_alloc += tokens_alloc;
+			if(!(aux = realloc(t, sizeof(char*) * tokens_alloc))) {
 				perror("msh");
 				for(size_t i = 0; i < tokens_count; i++)
-					free(tokens[i]);
-				free(tokens);
+					free(t[i]);
+				free(t);
 				return NULL;
 			}
-			tokens = aux;
+			t = aux;
 		}
-
-		tokens[tokens_count] = calloc(strlen(p) + 1, sizeof(char));
-		strcpy(tokens[tokens_count++], p);
+		t[tokens_count++] = p;
 	}
-
-	*t = tokens_count;
-	return tokens;
+	t[tokens_count] = NULL;
+	return t;
 }
 
 void msh_execute(char **argv) {
@@ -98,25 +93,31 @@ void msh_execute(char **argv) {
 
 void msh_loop(void) {
 	char *buffer, **tokens;
-	size_t tokens_count;
 
-	while (run) {
-		printf("> ");
-		buffer = buffer_read_line();
-		/* printf("%s\n", buffer); */
-		tokens = buffer_split_delim(buffer, &tokens_count);
+	buffer_alloc = READLINE_BUFFER_INIT_SIZE;
+	if(!(buffer = calloc(buffer_alloc, sizeof(char))))
+		exit(EXIT_FAILURE);
 
-		msh_execute(tokens);
-		for (size_t token = 0; token < tokens_count; token++)
-			free(tokens[token]);
-		free(buffer);
+	tokens_alloc = TOKENS_BUFFER_INIT_SIZE;
+	if(!(tokens = malloc(sizeof(char*) * tokens_alloc))) {
+		free(buffer)
+		exit(EXIT_FAILURE);
 	}
 
-	/* for (size_t token = 0; token < tokens_count; token++) */
-	/* 	free(tokens[token]); */
+	while (run) {
+		/* make cusor blinking vertical bar */
+		printf("\033[5 q$ ");
+		buffer = buffer_read_line(buffer);
+		tokens = buffer_split_delim(buffer, tokens);
 
-	/* free(tokens); */
-	/* free(buffer); */
+		/* skip execute if buffer is empty */
+		if(strlen(buffer) > 0)
+			msh_execute(tokens);
+
+		buffer_clear(buffer);
+	}
+	free(tokens);
+	free(buffer);
 }
 
 int main (void) {
