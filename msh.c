@@ -54,8 +54,7 @@ char **buffer_split(char *b, char **t) {
 	tokens_count = 0;
 	for(p = b; (p = strtok(p, TOKENS_DELIM)); p = NULL) {
 		if((tokens_count + 1) == tokens_alloc) {
-			tokens_alloc += tokens_alloc;
-			if(!(aux = realloc(t, sizeof(char*) * tokens_alloc))) {
+			if(!(aux = realloc(t, sizeof(char*) * (tokens_alloc *= 2)))) {
 				perror("msh");
 				for(size_t i = 0; i < tokens_count; i++)
 					free(t[i]);
