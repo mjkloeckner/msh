@@ -6,7 +6,11 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 
+#include <ctype.h>
+
 #include "tui.h"
+
+#define	TAB_SIZE	4
 
 #define	READLINE_BUFFER_INIT_SIZE	128
 #define TOKENS_BUFFER_INIT_SIZE		8
@@ -15,6 +19,11 @@
 static bool run = true;
 static size_t buffer_alloc;
 static size_t tokens_alloc;
+
+void buffer_print_slice(const char *buf, size_t from, size_t to) {
+	for(size_t i = from; i < to; i++)
+		printf("%c", buf[i]);
+}
 
 void buffer_clear(char *buf) {
 	size_t len = strlen(buf);
@@ -71,6 +80,124 @@ char **buffer_split(char *b, char **t) {
 	return t;
 }
 
+char *editor_read_line(char *s) {
+	int c;
+	char *aux;
+	size_t line_len, cursor_pos;
+
+	line_len = cursor_pos = 0;
+	while(1) {
+		c = getchar();
+
+		/* Ctrl-D */
+		if((c == 4) || (c == EOF)) {
+			run = false;
+			buffer_clear(s);
+			break;
+		}
+
+		if(c == 3) {
+			buffer_clear(s);
+			break;
+		}
+
+		if((c == '\r') || (c == '\n'))
+			break;
+
+		/* ESC */
+		if(c == 27) {
+			getchar(); /* skip '[' */
+			switch (getchar()) {
+			case 'A': /* up */
+				break;
+			case 'B': /* down */
+				break;
+			case 'D': /* left */
+				if(cursor_pos > 0) {
+					printf("\033[1D");
+					cursor_pos--;
+				}
+				break;
+			case 'C': /* right */
+				if(cursor_pos < line_len) {
+					printf("\033[1C");
+					cursor_pos++;
+				}
+				break;
+			default:
+				break;
+			}
+			continue;
+		}
+
+		/* Backspace */
+		if(c == 0x7f) {
+			if (line_len > 0) {
+				line_len -= 1;
+				cursor_pos -= 1;
+				printf("\b \b");
+				if (cursor_pos < line_len) {
+					memmove(s + cursor_pos, s + cursor_pos + 1, line_len - cursor_pos + 1);
+					buffer_print_slice(s, cursor_pos, line_len);
+					putchar(' ');
+					printf("\033[%ldD", line_len - cursor_pos + 1);
+				}
+			}
+			continue;
+		}
+
+		/* Delete */
+		if(c == 0x7e) {
+			if ((line_len > 0) && (cursor_pos < line_len)) {
+				line_len -= 1;
+				memmove(s + cursor_pos, s + cursor_pos + 1, line_len - cursor_pos);
+				buffer_print_slice(s, cursor_pos, line_len);
+				putchar(' ');
+				printf("\033[%ldD", line_len - cursor_pos + 1);
+			}
+			continue;
+		}
+
+
+		if(c == '\t') {
+			for(size_t i = 0; i < TAB_SIZE; i++)
+				putchar(' ');
+
+			line_len += TAB_SIZE;
+			continue;
+		}
+
+		if(line_len == (buffer_alloc - 1)) {
+			if(!(aux = realloc(s, buffer_alloc += buffer_alloc))) {
+				perror("msh");
+				free(s);
+				return NULL;
+			}
+			s = aux;
+		}
+		if (cursor_pos < line_len) {
+			memmove(s + cursor_pos + 1, s + cursor_pos, line_len - cursor_pos);
+
+			putchar(c);
+			s[cursor_pos++] = c;
+			line_len += 1;
+
+			buffer_print_slice(s, cursor_pos, line_len);
+
+			/* move left the amount buffer_print_slice moved the cursor */
+			printf("\033[%ldD", line_len - cursor_pos);
+		} else {
+			putchar(c);
+			s[line_len++] = c;
+			cursor_pos++;
+		}
+	}
+	printf("\r\n");
+	s[line_len] = '\0';
+	return s;
+}
+
+
 void msh_execute(char **argv) {
 	int status;
 	pid_t pid;
@@ -110,8 +237,8 @@ void msh_loop(void) {
 		tui_set_input_mode();
 
 		/* make cusor blinking vertical bar */
-		printf("\033[5 q$ ");
-		buffer = buffer_read_line(buffer);
+		printf("\r\033[5 q$ ");
+		buffer = editor_read_line(buffer);
 
 		tui_reset_input_mode();
 
