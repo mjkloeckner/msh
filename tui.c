@@ -1,16 +1,9 @@
 #include "tui.h"
 
-#include <stdio.h>
 #include <termios.h>
 #include <stdlib.h>
 #include <unistd.h>
-#include <signal.h>
-#include <string.h>
-#include <ctype.h>
 
-#define	TAB_SIZE	4
-
-static int is_terminal;
 static struct termios default_attributes;
 
 void tui_reset_input_mode (void) {
@@ -19,14 +12,6 @@ void tui_reset_input_mode (void) {
 
 void tui_set_input_mode (void) {
 	struct termios tattr;
-
-	/* Make sure stdin is a terminal. */
-	if (!isatty(STDIN_FILENO)) {
-		is_terminal = 0;
-		return;
-	} else {
-		is_terminal = 1;
-	}
 
 	/* Save the terminal attributes so we can restore them later. */
 	tcgetattr(STDIN_FILENO, &default_attributes);
