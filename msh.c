@@ -6,6 +6,8 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 
+#include "tui.h"
+
 #define	READLINE_BUFFER_INIT_SIZE	128
 #define TOKENS_BUFFER_INIT_SIZE		8
 #define TOKENS_DELIM				" |"
@@ -105,15 +107,20 @@ void msh_loop(void) {
 	}
 
 	while (run) {
+		tui_set_input_mode();
+
 		/* make cusor blinking vertical bar */
 		printf("\033[5 q$ ");
 		buffer = buffer_read_line(buffer);
+
+		tui_reset_input_mode();
+
 		tokens = buffer_split(buffer, tokens);
 
 		/* skip execute if buffer is empty */
 		if(strlen(buffer) > 0)
 			msh_execute(tokens);
-
+		
 		buffer_clear(buffer);
 	}
 	free(tokens);
