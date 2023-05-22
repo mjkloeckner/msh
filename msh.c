@@ -5,6 +5,7 @@
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/wait.h>
+#include <pwd.h>
 
 #include <ctype.h>
 
@@ -19,6 +20,13 @@
 static bool run = true;
 static size_t buffer_alloc;
 static size_t tokens_alloc;
+static size_t builtin_index;
+
+static const char *msh_builtins_name[] = {
+	"cd"
+};
+
+#define TOTAL_BUILTINS	sizeof(msh_builtins_name)/sizeof(msh_builtins_name[0])
 
 void buffer_print_slice(const char *buf, size_t from, size_t to) {
 	for(size_t i = from; i < to; i++)
@@ -200,6 +208,39 @@ char *editor_read_line(char *s) {
 	return s;
 }
 
+bool is_builtin(const char *name) {
+	size_t i;
+	for(i = builtin_index = 0; i < TOTAL_BUILTINS; i++)
+		if(!strcmp(name, msh_builtins_name[i]))
+			return true;
+
+	return false;
+}
+
+void msh_cd(const char **path) {
+	if(path[1] == NULL) {
+		/* go ot user home */
+		struct passwd *pw = getpwuid(getuid());
+		const char *user_home_dir = pw->pw_dir;
+		if(chdir(user_home_dir) < 0) {
+			perror("cd");
+		}
+	}
+	else {
+		if(chdir(path[1]) < 0)
+			fprintf(stderr,
+					"%s: No usch file or directory: %s\n",
+					"cd", path[0]);
+	}
+}
+
+static void (*msh_builtin_handler[])(const char **argv) = {
+	&msh_cd,
+};
+
+void msh_execute_builtin(char **argv) {
+	msh_builtin_handler[builtin_index]((const char **)argv);
+}
 
 void msh_execute(char **argv) {
 	int status;
@@ -248,9 +289,13 @@ void msh_loop(void) {
 		tokens = buffer_split(buffer, tokens);
 
 		/* skip execute if buffer is empty */
-		if(strlen(buffer) > 0)
-			msh_execute(tokens);
-		
+		if(strlen(buffer) > 0) {
+			if(is_builtin(tokens[0]))
+				msh_execute_builtin(tokens);
+			else
+				msh_execute(tokens);
+		}
+
 		buffer_clear(buffer);
 	}
 	free(tokens);
