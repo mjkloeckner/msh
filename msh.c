@@ -175,21 +175,24 @@ char *editor_read_line(char *s) {
 			}
 			s = aux;
 		}
-		if (cursor_pos < line_len) {
-			memmove(s + cursor_pos + 1, s + cursor_pos, line_len - cursor_pos);
 
-			putchar(c);
-			s[cursor_pos++] = c;
-			line_len += 1;
+		/* only print printable caracters */
+		if (isprint(c)) {
+			if (cursor_pos < line_len) {
+				memmove(s + cursor_pos + 1, s + cursor_pos, line_len - cursor_pos);
+				putchar(c);
+				s[cursor_pos++] = c;
+				line_len += 1;
 
-			buffer_print_slice(s, cursor_pos, line_len);
+				buffer_print_slice(s, cursor_pos, line_len);
 
-			/* move left the amount buffer_print_slice moved the cursor */
-			printf("\033[%ldD", line_len - cursor_pos);
-		} else {
-			putchar(c);
-			s[line_len++] = c;
-			cursor_pos++;
+				/* move left the amount buffer_print_slice moved the cursor */
+				printf("\033[%ldD", line_len - cursor_pos);
+			} else {
+				putchar(c);
+				s[line_len++] = c;
+				cursor_pos++;
+			}
 		}
 	}
 	printf("\r\n");
