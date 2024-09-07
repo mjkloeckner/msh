@@ -250,7 +250,7 @@ void msh_execute(char **argv) {
     if (pid == 0) {
         /* child process */
         if(execvp(argv[0], argv) < 0)
-            perror(argv[0]);
+            fprintf(stderr, "%s: command not found\n", argv[0]);
 
         exit(EXIT_FAILURE);
     }
