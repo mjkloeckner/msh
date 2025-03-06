@@ -140,7 +140,7 @@ char *editor_read_line(char *s) {
 
         /* Backspace */
         if(c == 0x7f) {
-            if (line_len > 0) {
+            if (line_len > 0 && cursor_pos > 0) {
                 line_len -= 1;
                 cursor_pos -= 1;
                 printf("\b \b");
